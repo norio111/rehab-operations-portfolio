@@ -1,0 +1,25 @@
+{
+  "name": "rehab-operations-portfolio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/run-vite.mjs",
+    "build": "node scripts/run-vite.mjs build",
+    "preview": "node scripts/run-vite.mjs preview",
+    "test": "node --test tests/rehab-scheduler.test.mjs tests/car-conflicts.test.mjs tests/discharge-returns.test.mjs"
+  },
+  "dependencies": {
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "10.4.21",
+    "postcss": "8.5.28",
+    "tailwindcss": "3.4.17",
+    "vite": "6.4.3"
+  },
+  "overrides": {
+    "rollup": "npm:@rollup/wasm-node@4.63.1"
+  }
+}

@@ -1,0 +1,65 @@
+%% ポートフォリオ用の汎用設計例。名称・配置例は架空のデモ用です。
+erDiagram
+    EQUIPMENT ||--o{ LOAN : "貸し出される"
+    EQUIPMENT ||--o{ RESERVATION : "時間予約される"
+    EQUIPMENT ||--o{ MAINTENANCE_LOG : "消毒・修理される"
+    PATIENT ||--o{ LOAN : "借りる"
+    PATIENT ||--o{ RESERVATION : "利用する"
+    STAFF ||--o{ LOAN : "貸出を担当"
+    STAFF ||--o{ RESERVATION : "予約を登録"
+
+    EQUIPMENT {
+        int equipment_id PK "QRコードに埋め込むID"
+        string name "デモ車椅子A / デモ機器A"
+        string category "車椅子/クッション/物理療法機器..."
+        string resource_type "loan(貸出型) or slot(予約型)"
+        string status "在庫/貸出中/消毒中/修理中"
+        string location "保管場所（例: 保管場所A）"
+        date purchased_at "購入日"
+        bool is_active "廃棄済みはfalse"
+    }
+
+    PATIENT {
+        string patient_id PK "デモ患者ID（例: DEMO-P001）・氏名は持たない"
+        string ward "病棟（例: 病棟A）"
+        date admitted_at "入院日"
+        date discharge_planned "退院予定日 ★アラートの起点"
+        date discharged_at "実退院日(NULL=在院中)"
+    }
+
+    LOAN {
+        int loan_id PK
+        int equipment_id FK
+        string patient_id FK "★退院チェックの紐づけ"
+        int staff_id FK
+        date loaned_at "貸出日"
+        date due_at "返却予定日"
+        date returned_at "返却日(NULL=貸出中)"
+        string note "貸出に関する補足（架空の例）"
+    }
+
+    RESERVATION {
+        int reservation_id PK
+        int equipment_id FK "予約型機器のみ"
+        string patient_id FK "任意(NULL可)"
+        int staff_id FK
+        date slot_date "予約日"
+        time start_time "開始 例13:00"
+        time end_time "終了 例13:40"
+        string status "予約/実施済/キャンセル"
+    }
+
+    STAFF {
+        int staff_id PK
+        string name "デモ担当者名（例: PT_A）"
+        string job "PT/OT/ST/Ns"
+        string ward "所属（例: 病棟A）"
+    }
+
+    MAINTENANCE_LOG {
+        int log_id PK
+        int equipment_id FK
+        string type "消毒/点検/修理"
+        date done_at "実施日"
+        string note "キャスター交換等"
+    }
