@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  candidatesForEquipment,
   equipmentTiming,
   estimatedWaitForPatient,
   extendTurnover,
@@ -69,6 +70,7 @@ export default function RehabQueueBoard() {
   const [selected, setSelected] = useState([]);
   const [durationOverrides, setDurationOverrides] = useState({});
   const [orderMode, setOrderMode] = useState("fixed");
+  const [view, setView] = useState("equipment");
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -203,6 +205,11 @@ export default function RehabQueueBoard() {
     [patients],
   );
 
+  const freeEquipment = useMemo(
+    () => equipment.filter((machine) => occupiedSlots(machine) < machine.capacity),
+    [equipment],
+  );
+
   return (
     <div
       className="min-h-screen bg-[#EFE8D8] text-[#2B2620] font-sans pb-10"
@@ -228,7 +235,23 @@ export default function RehabQueueBoard() {
             <h1 className="f-display text-2xl font-bold">リハビリ順番待ちボード</h1>
             <p className="text-xs text-[#FBF9F4]/60 mt-1">利用終了後は標準清掃時間を経て自動的に次の患者へ</p>
           </div>
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-4 text-sm flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-[#FBF9F4]/70">表示</span>
+              {[
+                { key: "equipment", label: "機器ごと" },
+                { key: "patient", label: "患者ごと" },
+              ].map((option) => (
+                <button
+                  key={option.key}
+                  onClick={() => setView(option.key)}
+                  className={`px-3 py-1.5 rounded-md ${view === option.key ? "bg-[#5E7A3A]" : "bg-[#243544]"}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
             <span className="text-[#FBF9F4]/70">表示速度</span>
             {[1, 60].map((rate) => (
               <button
@@ -239,11 +262,13 @@ export default function RehabQueueBoard() {
                 {rate === 1 ? "等速" : "デモ加速(60倍)"}
               </button>
             ))}
+            </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6 f-body">
+        {view === "patient" && (
         <section>
           <div className="flex items-end justify-between gap-3 mb-2">
             <div>
@@ -314,6 +339,172 @@ export default function RehabQueueBoard() {
             })}
           </div>
         </section>
+        )}
+
+        {view === "equipment" && (
+        <section>
+          <div className="flex items-end justify-between gap-3 mb-2">
+            <div>
+              <h2 className="text-sm font-semibold text-[#33475B]/70">機器ごとの状況と待機列</h2>
+              <p className="text-[11px] text-[#2B2620]/45 mt-0.5">待機列は待ち始めた時刻の順。他の機器を利用中の患者は含まれません</p>
+            </div>
+            <span className="text-xs f-mono text-[#33475B]/60">現在 {fmtClock(simNow)}</span>
+          </div>
+
+          <div className="rounded-lg border border-[#5E7A3A]/30 bg-[#F4F8EE] px-3 py-2 mb-2 text-xs">
+            <span className="font-semibold text-[#3E5226]">今すぐ使える機器</span>
+            <span className="ml-2 text-[#2B2620]/70">
+              {freeEquipment.length === 0
+                ? "なし（すべて使用中または清掃中）"
+                : freeEquipment.map((machine) => machine.name).join("・")}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            {equipment.map((machine) => {
+              const occupied = occupiedSlots(machine);
+              const freeSlots = Math.max(0, machine.capacity - occupied);
+              const timing = equipmentTiming(machine, patients, simNow);
+              const queue = candidatesForEquipment(patients, machine.id);
+              const inUseRows = machine.inUse
+                .map((patientId) => {
+                  const patient = patients.find((candidate) => candidate.id === patientId);
+                  if (!patient) return null;
+                  const item = patient.items.find(
+                    (candidate) => candidate.equipmentId === machine.id && candidate.status === "in_progress",
+                  );
+                  return item ? { patient, item, timing: usageTiming(item, simNow) } : null;
+                })
+                .filter(Boolean);
+              return (
+                <div
+                  key={machine.id}
+                  className={`rounded-lg border text-sm flex flex-col ${
+                    freeSlots > 0 ? "border-[#5E7A3A]/45 bg-[#FBF9F4]" : "border-[#33475B]/15 bg-[#FBF9F4]"
+                  }`}
+                >
+                  <div className="flex justify-between items-baseline gap-2 px-3 pt-2.5 pb-1.5">
+                    <span className="font-medium">{machine.name}</span>
+                    <span
+                      className={`text-xs f-mono px-1.5 py-0.5 rounded ${
+                        freeSlots > 0 ? "bg-[#5E7A3A] text-white" : "text-[#2B2620]/45"
+                      }`}
+                    >
+                      空き {freeSlots}/{machine.capacity}
+                    </span>
+                  </div>
+
+                  {freeSlots === 0 && (
+                    <div className="px-3 pb-1.5 text-[11px] text-[#2B2620]/55">
+                      空き予定 {fmtClock(timing.earliestAvailableAt)}（あと {fmtElapsed(timing.waitMs)}）
+                    </div>
+                  )}
+
+                  <div className="px-3 pb-2 space-y-1.5">
+                    {inUseRows.map(({ patient, item, timing: usage }) => (
+                      <div
+                        key={`use-${patient.id}`}
+                        className={`rounded-md border p-2 text-xs ${
+                          usage.overdue ? "border-[#C24A3B] bg-[#FFF0ED]" : "border-[#5E7A3A]/50 bg-[#F4F8EE]"
+                        }`}
+                      >
+                        <div className="flex justify-between items-baseline">
+                          <span className="f-mono font-semibold">No.{patient.no}</span>
+                          <span className={`f-mono text-[11px] ${usage.overdue ? "text-[#B42F25] font-semibold" : "text-[#3E5226]"}`}>
+                            {usage.overdue ? `超過 ${fmtElapsed(-usage.remainingMs)}` : `残り ${fmtElapsed(usage.remainingMs)}`}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => finishUsage(patient.id, machine.id)}
+                          className={`mt-1.5 w-full rounded px-2 py-1 text-white ${usage.overdue ? "bg-[#B42F25]" : "bg-[#5E7A3A]"}`}
+                        >
+                          利用終了
+                        </button>
+                      </div>
+                    ))}
+
+                    {machine.turnovers.map((turnover) => (
+                      <div key={turnover.id} className="rounded-md border border-[#D18A2C]/35 bg-[#FFF4DC] p-2 text-[11px]">
+                        <div className="font-medium text-[#9A5C10]">清掃・交代中（No.{turnover.patientNo}利用後）</div>
+                        <div className="text-[#2B2620]/55">
+                          {fmtClock(turnover.readyAt)}に解放（あと {fmtElapsed(turnover.readyAt - simNow)}）
+                        </div>
+                        <button
+                          onClick={() => extendCleaning(machine.id, turnover.id)}
+                          className="mt-1.5 w-full rounded border border-[#C6901F]/50 bg-white px-2 py-1 text-[#8B6217]"
+                        >
+                          清掃を1分延長
+                        </button>
+                      </div>
+                    ))}
+
+                    <div className="pt-0.5">
+                      <div className="text-[10px] text-[#2B2620]/45 mb-1">待機 {queue.length}名</div>
+                      {queue.length === 0 && <div className="text-[11px] text-[#2B2620]/35">待機なし</div>}
+                      {queue.map(({ patient }, index) => {
+                        const estimate = estimatedWaitForPatient(machine, patients, patient.id, simNow);
+                        const waitMs = patient.idleSince == null ? null : simNow - patient.idleSince;
+                        const attention = waitMs != null && waitMs > ATTENTION_MS;
+                        return (
+                          <div
+                            key={`wait-${patient.id}`}
+                            className={`flex items-baseline gap-1.5 text-[11px] py-0.5 border-t border-[#33475B]/8 ${
+                              attention ? "text-[#C24A3B]" : "text-[#2B2620]/70"
+                            }`}
+                          >
+                            <span className="f-mono text-[10px] text-[#2B2620]/35 w-3">{index + 1}</span>
+                            <span className="f-mono font-semibold">No.{patient.no}</span>
+                            {waitMs != null && <span className="f-mono text-[10px]">待機 {fmtElapsed(waitMs)}</span>}
+                            {estimate && (
+                              <span className="ml-auto f-mono text-[10px] text-[#9A6914]">
+                                {estimate.waitMs > 0 ? `目安 ${fmtElapsed(estimate.waitMs)}` : "次"}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <details className="mt-2 rounded-lg border border-[#33475B]/15 bg-[#FBF9F4] px-3 py-2">
+            <summary className="text-xs text-[#33475B]/70 cursor-pointer">機器ごとの標準利用時間・清掃時間を変更</summary>
+            <p className="text-[11px] text-[#2B2620]/45 mt-1 mb-2">変更は今後受け付ける患者に適用されます</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {equipment.map((machine) => (
+                <div key={`cfg-${machine.id}`} className="text-[11px]">
+                  <div className="mb-1 font-medium">{machine.name}</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    <label className="text-[10px] text-[#2B2620]/55">
+                      利用
+                      <input
+                        type="number"
+                        min="1"
+                        value={machine.standardDurationMin}
+                        onChange={(event) => setEquipmentMinutes(machine.id, "standardDurationMin", event.target.value)}
+                        className="mt-0.5 w-full rounded border border-[#33475B]/20 bg-white px-1.5 py-1 f-mono text-xs"
+                      />
+                    </label>
+                    <label className="text-[10px] text-[#2B2620]/55">
+                      清掃
+                      <input
+                        type="number"
+                        min="0"
+                        value={machine.turnoverMin}
+                        onChange={(event) => setEquipmentMinutes(machine.id, "turnoverMin", event.target.value)}
+                        className="mt-0.5 w-full rounded border border-[#33475B]/20 bg-white px-1.5 py-1 f-mono text-xs"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+        )}
 
         <section className="bg-[#FBF9F4] rounded-lg p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-[#33475B]/70 mb-2">
@@ -372,6 +563,7 @@ export default function RehabQueueBoard() {
           </div>
         </section>
 
+        {view === "patient" && (
         <section>
           <h2 className="text-sm font-semibold text-[#33475B]/70 mb-2">順番待ちボード（{sortedPatients.length}名）</h2>
           <div className="space-y-2">
@@ -425,6 +617,7 @@ export default function RehabQueueBoard() {
             })}
           </div>
         </section>
+        )}
 
         {done.length > 0 && (
           <section>
